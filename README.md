@@ -1,71 +1,76 @@
+# In-Depth Analysis of Ovarian Cancer Stage Prediction
 
-# Documentation: Ovarian Cancer Stage Prediction Project
+This project provides a detailed walkthrough of building a machine learning classifier to predict the stage of ovarian cancer. The goal is to distinguish between early-stage (I-II) and late-stage (III-IV) cancer using a rich dataset from TCGA-OV. This document elaborates on the methodology and the reasoning behind each step in the `Cancer_Prediction.ipynb` notebook.
 
-## 1. Project Overview
+## Methodological Breakdown
 
-This project aims to build a machine learning classifier to predict whether a patient's ovarian cancer is early stage (Stage I-II) or late stage (Stage III-IV). The prediction is based on clinical, pathology, exposure, family history, and follow-up data from the TCGA-OV dataset.
+The core logic of the project is to transform raw, multi-modal clinical data into a clean, structured format suitable for machine learning, and then to build, evaluate, and interpret predictive models.
 
-The project involves the following key steps:
+### 1. Data Consolidation and Preparation
 
-1.  **Data Loading and Merging:** Loading and merging five different data files into a single dataset.
-2.  **Data Cleaning and Preprocessing:** Handling missing values, encoding categorical features, and selecting a relevant set of features for modeling.
-3.  **Model Training and Evaluation:** Training and evaluating two machine learning models (Logistic Regression and Random Forest) to predict the cancer stage.
-4.  **Analysis and Reporting:** Analyzing the model results, identifying key predictive features, and summarizing the findings in a report.
+**The Challenge**: The patient data is fragmented across five separate files (`clinical.tsv`, `pathology_detail.tsv`, etc.), each describing a different aspect of the patient's case. To build a holistic model, we need a single, unified view of each patient.
 
-## 2. Project Structure and File Descriptions
+**Our Approach**: 
+- We performed a series of **outer merges** using `pandas`. An outer merge was specifically chosen to ensure that all information for every patient (`cases.case_id`) was retained, even if a patient's record was not present in all five files. This prevents data loss.
+- During the merge, we identified and removed redundant columns (like `project.project_id`) that were common across files to avoid duplicated data and keep the resulting dataset clean.
 
-This project is organized into a series of Python scripts that perform specific tasks. The scripts are designed to be run in a specific order to ensure the correct workflow. Here is a description of the files in this project:
+### 2. Defining the Clinical Outcome (Target Variable)
 
-### Data Files
+**The Challenge**: The raw data contains a detailed cancer stage (`diagnoses.figo_stage`) with many sub-stages (e.g., 'Stage IA', 'Stage IIIC'). For a classification model, we need a clear, binary outcome.
 
-*   `Data - clinical.project-tcga-ov.2025-08-09/`: This directory contains the raw data files provided for the assignment.
-    *   `clinical.tsv`: Demographic and clinical variables.
-    *   `pathology_detail.tsv`: Tumor and histological details.
-    *   `exposure.tsv`: Lifestyle/environmental risk factors.
-    *   `family_history.tsv`: Family cancer history.
-    *   `follow_up.tsv`: Follow-up clinical outcomes.
-*   `merged_data.csv`: A merged dataset containing data from all five raw data files.
-*   `data_with_target.csv`: The merged dataset with the addition of the binary target variable (`target`).
-*   `processed_data.csv`: The final, cleaned, and preprocessed dataset used for model training.
-*   `X_train.csv`, `X_test.csv`, `y_train.csv`, `y_test.csv`: The split data for training and testing the models.
+**Our Approach**:
+- We engineered a new **target variable** to represent our clinical question: "Is the cancer early-stage or late-stage?"
+- We wrote a function to map the detailed FIGO stages into two categories:
+  - **0 (Early Stage)**: Includes Stages I and II and all their sub-stages.
+  - **1 (Late Stage)**: Includes Stages III and IV and all their sub-stages.
+- Records with ambiguous or missing stage information (marked as `'--'`) were removed, as they could not be reliably classified and would add noise to the model.
 
-### Scripts
+### 3. Curating a High-Impact Feature Set
 
-Here is a description of the Python scripts created to perform the analysis. The scripts are numbered in the order they should be run.
+**The Challenge**: The merged dataset contains over 500 features, many of which are sparse, irrelevant, or redundant. Using all features would likely lead to poor model performance (due to the curse of dimensionality) and make the model difficult to interpret.
 
-1.  **`load_data_3.py`**: This script loads the five raw TSV files, merges them into a single dataframe, and saves the merged dataframe as `merged_data.csv`.
-2.  **`define_target_2.py`**: This script loads the `merged_data.csv` file, creates the binary target variable (`target`) based on the `diagnoses.figo_stage` column, and saves the resulting dataframe as `data_with_target.csv`.
-3.  **`feature_selection_5.py`**: This script performs feature selection, handles missing values, and encodes categorical features. It takes the `data_with_target.csv` file as input and produces the `processed_data.csv` file.
-4.  **`split_data.py`**: This script splits the `processed_data.csv` file into training and testing sets and saves them as `X_train.csv`, `X_test.csv`, `y_train.csv`, and `y_test.csv`.
-5.  **`train_models.py`**: This script trains the Logistic Regression and Random Forest models on the training data and saves the trained models as `logistic_regression_model.joblib` and `random_forest_model.joblib`.
-6.  **`evaluate_models.py`**: This script evaluates the trained models on the test data, computes various performance metrics, and generates plots for the confusion matrix and ROC curve.
-7.  **`final_analysis_3.py`**: This script performs the final analysis, including identifying the most important features from the Random Forest model and generating EDA plots to explore clinical patterns.
+**Our Approach**:
+- **Feature Selection**: We manually selected a small subset of clinically relevant features (e.g., `demographic.age_at_index`, `diagnoses.tumor_grade`). This is a domain-knowledge-driven approach to focus the model on variables that are most likely to be predictive.
+- **Handling Missing Values**: Machine learning models cannot process missing data (`NaN`s). We imputed missing values as follows:
+  - For **numerical features** (like age), we used the **median**. The median is more robust to outliers than the mean, making it a safer choice.
+  - For **categorical features** (like race), we used the **mode** (the most frequent value).
+- **Categorical Feature Encoding**: Models require all input to be numeric. We used **one-hot encoding** (`pd.get_dummies`) to convert categorical features into a numerical format. This method creates new binary (0/1) columns for each category, avoiding the incorrect assumption of an ordinal relationship between categories (e.g., that 'white' is "less than" 'asian'). We used `drop_first=True` to prevent multicollinearity among the newly created features.
 
-### Model Files
+### 4. Model Development and Validation Strategy
 
-*   `logistic_regression_model.joblib`: The saved Logistic Regression model.
-*   `random_forest_model.joblib`: The saved Random Forest model.
+**The Challenge**: We need to train a model that not only performs well on the data it has seen but also generalizes to new, unseen patient data.
 
-### Output Files
+**Our Approach**:
+- **Train-Test Split**: We split the data into a training set (80%) and a testing set (20%). The model is trained only on the training data, and its final performance is evaluated on the completely unseen test data.
+- **Stratification**: When splitting, we used `stratify=y`. This ensures that the proportion of early-stage and late-stage cases is the same in both the training and testing sets. This is critical for imbalanced datasets, as it prevents a scenario where the test set accidentally contains a very different distribution of outcomes than the training set.
+- **Choice of Models**: We trained two distinct models to compare their performance:
+  - **Logistic Regression**: A simple, interpretable linear model that provides a good baseline.
+  - **Random Forest**: A powerful, non-linear ensemble model that can capture complex interactions between features.
+- **Cross-Validation**: Before final training, we used 5-fold cross-validation to get a more reliable estimate of how each model would perform on unseen data. This helps in tuning the model and ensuring its stability.
 
-*   `report.txt`: A text file containing the final report summarizing the project's findings.
-*   `confusion_matrices.png`: A plot of the confusion matrices for both models.
-*   `roc_curve.png`: A plot of the ROC curves for both models.
-*   `feature_importance.png`: A plot of the top 15 most important features from the Random Forest model.
-*   `eda_plots.png`: A plot of the exploratory data analysis (EDA) for the top features.
+### 5. In-Depth Model Performance Evaluation
 
-## 3. How to Run the Project
+**The Challenge**: A single metric like accuracy can be misleading, especially for imbalanced datasets. We need a comprehensive set of metrics to understand the models' strengths and weaknesses.
 
-To reproduce the results of this project, you need to run the Python scripts in the following order:
+**Our Approach**: We evaluated the models using:
+- **Accuracy**: The overall percentage of correct predictions.
+- **Precision**: Of the patients we predicted to have late-stage cancer, how many actually did? (Measures the cost of a false positive).
+- **Recall (Sensitivity)**: Of all the patients who truly had late-stage cancer, how many did our model identify? (Measures the cost of a false negative, which is often critical in medicine).
+- **F1-Score**: The harmonic mean of precision and recall, providing a single score that balances both concerns.
+- **ROC-AUC**: Measures the model's ability to distinguish between early and late-stage cancer across all possible classification thresholds.
 
-```bash
-python3 load_data_3.py
-python3 define_target_2.py
-python3 feature_selection_5.py
-python3 split_data.py
-python3 train_models.py
-python3 evaluate_models.py
-python3 final_analysis_3.py
-```
+### 6. Uncovering Predictive Clinical Factors
 
-After running all the scripts, the output files (plots, models, and the report) will be generated in the project directory.
+**The Challenge**: A prediction is useful, but understanding *why* the prediction was made is crucial for clinical insight and trust.
+
+**Our Approach**:
+- **Feature Importance Analysis**: We extracted the feature importances from the Random Forest model. This analysis ranks the features based on their contribution to the model's predictive power.
+- **Visualization**: We created plots to visualize these importances, highlighting the top clinical factors (e.g., `diagnoses.age_at_diagnosis`, `diagnoses.tumor_grade`) that drive the prediction of cancer stage.
+
+## How to Run
+
+1.  **Prerequisites**: Ensure you have Python 3 and the required libraries installed.
+    ```bash
+    pip install pandas numpy scikit-learn joblib matplotlib seaborn
+    ```
+2.  **Jupyter Notebook**: Open and run the `Cancer_Prediction.ipynb` notebook in a Jupyter environment.
